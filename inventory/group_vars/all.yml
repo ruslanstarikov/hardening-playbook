@@ -1,0 +1,78 @@
+---
+# Global variables for all hosts
+
+# SSH hardening settings
+hardening_ssh_port: 22
+hardening_ssh_permit_root_login: "no"
+hardening_ssh_password_authentication: "no"
+hardening_ssh_pubkey_authentication: "yes"
+hardening_ssh_permit_empty_passwords: "no"
+hardening_ssh_x11_forwarding: "no"
+hardening_ssh_max_auth_tries: 3
+hardening_ssh_client_alive_interval: 300
+hardening_ssh_client_alive_count_max: 2
+hardening_ssh_login_grace_time: 60
+hardening_ssh_allowed_users: []
+hardening_ssh_allowed_groups: []
+hardening_ssh_protocol: 2
+hardening_ssh_use_pam: "yes"
+
+# User and authentication settings
+hardening_password_max_days: 90
+hardening_password_min_days: 1
+hardening_password_warn_age: 7
+hardening_password_min_length: 14
+hardening_password_remember: 5
+hardening_disable_unused_users: true
+
+# File system hardening
+hardening_tmp_options: "nodev,nosuid,noexec"
+hardening_var_tmp_options: "nodev,nosuid,noexec"
+hardening_dev_shm_options: "nodev,nosuid,noexec"
+hardening_home_options: "nodev"
+
+# Network hardening
+hardening_disable_ipv6: false
+hardening_disable_wireless: false
+hardening_disable_uncommon_protocols: true
+
+# Kernel hardening
+hardening_kernel_parameters:
+  - { name: "net.ipv4.ip_forward", value: 0 }
+  - { name: "net.ipv4.conf.all.send_redirects", value: 0 }
+  - { name: "net.ipv4.conf.default.send_redirects", value: 0 }
+  - { name: "net.ipv4.conf.all.accept_source_route", value: 0 }
+  - { name: "net.ipv4.conf.default.accept_source_route", value: 0 }
+  - { name: "net.ipv4.conf.all.accept_redirects", value: 0 }
+  - { name: "net.ipv4.conf.default.accept_redirects", value: 0 }
+  - { name: "net.ipv4.conf.all.secure_redirects", value: 0 }
+  - { name: "net.ipv4.conf.default.secure_redirects", value: 0 }
+  - { name: "net.ipv4.conf.all.log_martians", value: 1 }
+  - { name: "net.ipv4.conf.default.log_martians", value: 1 }
+  - { name: "net.ipv4.icmp_echo_ignore_broadcasts", value: 1 }
+  - { name: "net.ipv4.icmp_ignore_bogus_error_responses", value: 1 }
+  - { name: "net.ipv4.conf.all.rp_filter", value: 1 }
+  - { name: "net.ipv4.conf.default.rp_filter", value: 1 }
+  - { name: "net.ipv4.tcp_syncookies", value: 1 }
+  - { name: "kernel.randomize_va_space", value: 2 }
+  - { name: "kernel.dmesg_restrict", value: 1 }
+  - { name: "kernel.kptr_restrict", value: 2 }
+  - { name: "fs.suid_dumpable", value: 0 }
+
+# Service hardening
+hardening_disable_services:
+  - avahi-daemon
+  - cups
+  - isc-dhcp-server
+  - isc-dhcp-server6
+  - rpcbind
+  - rsync
+  - snmpd
+
+# Audit and logging
+hardening_enable_auditd: true
+hardening_log_suspicious_packets: true
+
+# Package management
+hardening_auto_update: false
+hardening_remove_unused_packages: false

@@ -1,0 +1,39 @@
+---
+# Moderate hardening configuration for balanced security
+# Place this file in inventory/group_vars/all.yml or specific group
+
+# SSH - Moderate settings
+hardening_ssh_port: 22
+hardening_ssh_permit_root_login: "no"
+hardening_ssh_password_authentication: "no"
+hardening_ssh_pubkey_authentication: "yes"
+hardening_ssh_permit_empty_passwords: "no"
+hardening_ssh_x11_forwarding: "no"
+hardening_ssh_max_auth_tries: 4
+hardening_ssh_client_alive_interval: 600
+hardening_ssh_client_alive_count_max: 3
+hardening_ssh_login_grace_time: 60
+
+# Password policies - Moderate
+hardening_password_max_days: 90
+hardening_password_min_days: 1
+hardening_password_warn_age: 7
+hardening_password_min_length: 12
+hardening_password_remember: 5
+hardening_disable_unused_users: false
+
+# Network - Standard
+hardening_disable_ipv6: false
+hardening_disable_wireless: false
+hardening_disable_uncommon_protocols: true
+
+# Services - Standard
+hardening_disable_services:
+  - avahi-daemon
+  - cups
+  - rpcbind
+  - rsync
+
+# Audit and logging - Standard
+hardening_enable_auditd: true
+hardening_log_suspicious_packets: true

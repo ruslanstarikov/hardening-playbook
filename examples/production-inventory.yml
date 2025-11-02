@@ -1,0 +1,45 @@
+---
+# Example production inventory
+all:
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_user: ansible
+    ansible_become: yes
+    
+  children:
+    production:
+      children:
+        webservers:
+          hosts:
+            web01:
+              ansible_host: 10.0.1.10
+            web02:
+              ansible_host: 10.0.1.11
+            web03:
+              ansible_host: 10.0.1.12
+          vars:
+            hardening_ssh_port: 22
+            hardening_ssh_allowed_groups:
+              - webadmin
+              - deploy
+              
+        dbservers:
+          hosts:
+            db01:
+              ansible_host: 10.0.2.10
+            db02:
+              ansible_host: 10.0.2.11
+          vars:
+            hardening_ssh_port: 22
+            hardening_ssh_allowed_users:
+              - dbadmin
+            hardening_enable_auditd: true
+            
+        appservers:
+          hosts:
+            app01:
+              ansible_host: 10.0.3.10
+            app02:
+              ansible_host: 10.0.3.11
+          vars:
+            hardening_ssh_port: 2222

@@ -1,0 +1,152 @@
+---
+- name: Configure password aging in login.defs
+  lineinfile:
+    path: /etc/login.defs
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^PASS_MAX_DAYS', line: 'PASS_MAX_DAYS   {{ hardening_password_max_days }}' }
+    - { regexp: '^PASS_MIN_DAYS', line: 'PASS_MIN_DAYS   {{ hardening_password_min_days }}' }
+    - { regexp: '^PASS_WARN_AGE', line: 'PASS_WARN_AGE   {{ hardening_password_warn_age }}' }
+    - { regexp: '^PASS_MIN_LEN', line: 'PASS_MIN_LEN    {{ hardening_password_min_length }}' }
+
+- name: Install PAM password quality module (Debian/Ubuntu)
+  apt:
+    name: libpam-pwquality
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install PAM password quality module (RedHat/CentOS/Amazon Linux)
+  yum:
+    name: libpwquality
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install PAM password quality module (OpenSUSE)
+  zypper:
+    name: libpwquality1
+    state: present
+  when: ansible_os_family == "Suse"
+
+- name: Configure password quality requirements
+  lineinfile:
+    path: /etc/security/pwquality.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^#?\s*minlen', line: 'minlen = {{ hardening_password_min_length }}' }
+    - { regexp: '^#?\s*dcredit', line: 'dcredit = -1' }
+    - { regexp: '^#?\s*ucredit', line: 'ucredit = -1' }
+    - { regexp: '^#?\s*lcredit', line: 'lcredit = -1' }
+    - { regexp: '^#?\s*ocredit', line: 'ocredit = -1' }
+    - { regexp: '^#?\s*minclass', line: 'minclass = 4' }
+
+- name: Configure PAM to remember old passwords (Debian/Ubuntu)
+  lineinfile:
+    path: /etc/pam.d/common-password
+    regexp: '^password\s+requisite\s+pam_pwquality.so'
+    line: 'password requisite pam_pwquality.so retry=3'
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Configure PAM password history (Debian/Ubuntu)
+  lineinfile:
+    path: /etc/pam.d/common-password
+    regexp: '^password\s+sufficient\s+pam_unix.so'
+    line: 'password sufficient pam_unix.so use_authtok remember={{ hardening_password_remember }} sha512 shadow'
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Configure PAM to remember old passwords (RedHat/Amazon Linux)
+  lineinfile:
+    path: /etc/pam.d/system-auth
+    regexp: '^password\s+requisite\s+pam_pwquality.so'
+    line: 'password requisite pam_pwquality.so retry=3'
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Configure PAM password history (RedHat/Amazon Linux)
+  lineinfile:
+    path: /etc/pam.d/system-auth
+    regexp: '^password\s+sufficient\s+pam_unix.so'
+    line: 'password sufficient pam_unix.so use_authtok remember={{ hardening_password_remember }} sha512 shadow'
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Set proper permissions on passwd file
+  file:
+    path: /etc/passwd
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Set proper permissions on shadow file
+  file:
+    path: /etc/shadow
+    owner: root
+    group: root
+    mode: '0000'
+
+- name: Set proper permissions on group file
+  file:
+    path: /etc/group
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Set proper permissions on gshadow file
+  file:
+    path: /etc/gshadow
+    owner: root
+    group: root
+    mode: '0000'
+  when: ansible_os_family != "Suse"
+
+- name: Ensure root is the only UID 0 account
+  shell: |
+    awk -F: '($3 == "0") {print $1}' /etc/passwd | grep -v '^root$' || true
+  register: uid_zero_accounts
+  changed_when: false
+
+- name: Warning about additional UID 0 accounts
+  debug:
+    msg: "WARNING: Additional UID 0 accounts found: {{ uid_zero_accounts.stdout }}"
+  when: uid_zero_accounts.stdout != ""
+
+- name: Set account lockout for failed login attempts
+  lineinfile:
+    path: "{{ item }}"
+    regexp: '^auth\s+required\s+pam_faillock.so'
+    line: 'auth required pam_faillock.so deny=5 unlock_time=900'
+    insertafter: '^auth'
+    state: present
+  loop:
+    - /etc/pam.d/system-auth
+    - /etc/pam.d/password-auth
+  when: ansible_os_family == "RedHat"
+
+- name: Disable unused user accounts
+  user:
+    name: "{{ item }}"
+    shell: /usr/sbin/nologin
+  loop:
+    - games
+    - news
+    - uucp
+    - proxy
+    - list
+    - irc
+    - gnats
+  when: 
+    - hardening_disable_unused_users | bool
+    - ansible_os_family == "Debian"
+  failed_when: false
+
+- name: Set timeout for shell sessions
+  lineinfile:
+    path: /etc/profile.d/timeout.sh
+    line: 'TMOUT=900'
+    create: yes
+    mode: '0644'

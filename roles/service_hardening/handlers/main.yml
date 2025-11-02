@@ -1,0 +1,6 @@
+---
+- name: restart systemd-coredump
+  systemd:
+    name: systemd-coredump
+    state: restarted
+  failed_when: false

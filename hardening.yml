@@ -1,0 +1,53 @@
+---
+- name: Harden Linux Servers
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Display OS information
+      debug:
+        msg: "Hardening {{ ansible_distribution }} {{ ansible_distribution_version }} on {{ inventory_hostname }}"
+
+    - name: Ensure facts directory exists
+      file:
+        path: /etc/ansible/facts.d
+        state: directory
+        mode: '0755'
+      tags: always
+
+  roles:
+    - role: system_prepare
+      tags: ['system', 'prepare']
+    - role: ssh_hardening
+      tags: ['ssh', 'network']
+    - role: user_auth_hardening
+      tags: ['users', 'auth']
+    - role: filesystem_hardening
+      tags: ['filesystem']
+    - role: network_hardening
+      tags: ['network']
+    - role: kernel_hardening
+      tags: ['kernel']
+    - role: service_hardening
+      tags: ['services']
+    - role: audit_logging
+      tags: ['audit', 'logging']
+
+  post_tasks:
+    - name: Display hardening completion message
+      debug:
+        msg: "Hardening completed for {{ inventory_hostname }}. Please reboot the system to apply all changes."
+
+    - name: Check if reboot is required (Ubuntu/Debian)
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+      when: ansible_os_family == "Debian"
+
+    - name: Notify reboot requirement
+      debug:
+        msg: "System reboot is required!"
+      when: 
+        - ansible_os_family == "Debian"
+        - reboot_required_file.stat.exists | default(false)

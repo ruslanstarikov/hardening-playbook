@@ -1,0 +1,141 @@
+---
+- name: Disable and stop unnecessary services
+  service:
+    name: "{{ item }}"
+    enabled: no
+    state: stopped
+  loop: "{{ hardening_disable_services }}"
+  failed_when: false
+
+- name: Remove unnecessary packages (Debian/Ubuntu)
+  apt:
+    name:
+      - telnet
+      - nis
+      - rsh-client
+      - rsh-redone-client
+      - talk
+    state: absent
+  when: ansible_os_family == "Debian"
+  failed_when: false
+
+- name: Remove unnecessary packages (RedHat/CentOS/Amazon Linux)
+  yum:
+    name:
+      - telnet
+      - ypbind
+      - rsh
+      - talk
+    state: absent
+  when: ansible_os_family == "RedHat"
+  failed_when: false
+
+- name: Disable core dump service
+  service:
+    name: systemd-coredump.socket
+    enabled: no
+    state: stopped
+  failed_when: false
+
+- name: Mask core dump service
+  systemd:
+    name: systemd-coredump.socket
+    masked: yes
+  failed_when: false
+
+- name: Disable Ctrl+Alt+Del
+  systemd:
+    name: ctrl-alt-del.target
+    masked: yes
+  failed_when: false
+
+- name: Check for running unnecessary services
+  shell: |
+    systemctl list-units --type=service --state=running | grep -E 'avahi|cups|rpcbind' || true
+  register: unnecessary_services
+  changed_when: false
+
+- name: Report running unnecessary services
+  debug:
+    msg: "Unnecessary services still running: {{ unnecessary_services.stdout_lines }}"
+  when: unnecessary_services.stdout_lines | length > 0
+
+- name: Configure systemd default timeout
+  lineinfile:
+    path: /etc/systemd/system.conf
+    regexp: '^#?DefaultTimeoutStopSec='
+    line: 'DefaultTimeoutStopSec=10s'
+    state: present
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+
+- name: Ensure cron is enabled and running
+  service:
+    name: "{{ cron_service_name }}"
+    enabled: yes
+    state: started
+
+- name: Set proper permissions on cron directories
+  file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: '0700'
+    state: directory
+  loop:
+    - /etc/cron.d
+    - /etc/cron.daily
+    - /etc/cron.hourly
+    - /etc/cron.monthly
+    - /etc/cron.weekly
+
+- name: Set proper permissions on crontab
+  file:
+    path: /etc/crontab
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Restrict at/cron to authorized users
+  file:
+    path: "{{ item }}"
+    state: touch
+    owner: root
+    group: root
+    mode: '0600'
+    modification_time: preserve
+    access_time: preserve
+  loop:
+    - /etc/cron.allow
+    - /etc/at.allow
+
+- name: Remove at/cron deny files
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/cron.deny
+    - /etc/at.deny
+
+- name: Disable uncommon services
+  systemd:
+    name: "{{ item }}"
+    enabled: no
+    state: stopped
+    masked: yes
+  loop:
+    - autofs
+    - rpcbind.service
+    - rpcbind.socket
+  failed_when: false
+
+- name: Configure systemd coredump
+  lineinfile:
+    path: /etc/systemd/coredump.conf
+    regexp: '^#?Storage='
+    line: 'Storage=none'
+    state: present
+  notify: restart systemd-coredump
+  failed_when: false
