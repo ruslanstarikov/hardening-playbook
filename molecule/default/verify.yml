@@ -1,0 +1,85 @@
+---
+- name: Verify
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Check if SSH is running
+      service:
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
+        state: started
+      register: ssh_status
+      failed_when: ssh_status.status.ActiveState != "active"
+
+    - name: Verify SSH configuration
+      shell: sshd -T | grep -E 'permitrootlogin|passwordauthentication'
+      register: ssh_config
+      changed_when: false
+
+    - name: Display SSH configuration
+      debug:
+        var: ssh_config.stdout_lines
+
+    - name: Check kernel parameters
+      shell: sysctl net.ipv4.ip_forward
+      register: ip_forward
+      changed_when: false
+
+    - name: Verify IP forwarding is disabled
+      assert:
+        that:
+          - "'net.ipv4.ip_forward = 0' in ip_forward.stdout"
+        fail_msg: "IP forwarding should be disabled"
+        success_msg: "IP forwarding is correctly disabled"
+
+    - name: Check if auditd is installed
+      package:
+        name: "{{ 'auditd' if ansible_os_family == 'Debian' else 'audit' }}"
+        state: present
+      check_mode: yes
+      register: auditd_installed
+
+    - name: Verify password quality package is installed
+      package:
+        name: "{{ 'libpam-pwquality' if ansible_os_family == 'Debian' else 'libpwquality' }}"
+        state: present
+      check_mode: yes
+      register: pwquality_installed
+
+    - name: Check file permissions on /etc/shadow
+      stat:
+        path: /etc/shadow
+      register: shadow_file
+
+    - name: Verify /etc/shadow permissions
+      assert:
+        that:
+          - shadow_file.stat.mode == '0000'
+        fail_msg: "/etc/shadow has incorrect permissions"
+        success_msg: "/etc/shadow has correct permissions (0000)"
+
+    - name: Check if firewall is installed
+      shell: |
+        if [ -f /usr/sbin/ufw ]; then
+          echo "ufw"
+        elif [ -f /usr/bin/firewall-cmd ]; then
+          echo "firewalld"
+        else
+          echo "none"
+        fi
+      register: firewall_check
+      changed_when: false
+
+    - name: Display firewall status
+      debug:
+        msg: "Firewall detected: {{ firewall_check.stdout }}"
+
+    - name: Verify hardening facts
+      shell: cat /etc/ansible/facts.d/hardening.fact
+      register: hardening_facts
+      changed_when: false
+
+    - name: Display hardening facts
+      debug:
+        var: hardening_facts.stdout

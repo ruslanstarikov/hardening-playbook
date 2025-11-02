@@ -1,0 +1,22 @@
+---
+- name: Converge
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Update apt cache (Debian/Ubuntu)
+      apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+      changed_when: false
+
+  roles:
+    - role: system_prepare
+    - role: ssh_hardening
+    - role: user_auth_hardening
+    - role: filesystem_hardening
+    - role: network_hardening
+    - role: kernel_hardening
+    - role: service_hardening
+    - role: audit_logging

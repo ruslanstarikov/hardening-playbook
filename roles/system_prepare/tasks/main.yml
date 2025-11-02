@@ -1,0 +1,83 @@
+---
+- name: Include OS-specific variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution }}.yml"
+    - "{{ ansible_os_family }}.yml"
+    - "default.yml"
+
+- name: Update package cache (Debian/Ubuntu)
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  when: ansible_os_family == "Debian"
+
+- name: Update package cache (RedHat/CentOS/Amazon Linux)
+  yum:
+    update_cache: yes
+  when: ansible_os_family == "RedHat"
+
+- name: Update package cache (OpenSUSE)
+  zypper:
+    name: '*'
+    state: latest
+    update_cache: yes
+  when: ansible_os_family == "Suse"
+  changed_when: false
+
+- name: Ensure essential packages are installed (Debian/Ubuntu)
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - software-properties-common
+      - sudo
+      - vim
+      - wget
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Ensure essential packages are installed (RedHat/CentOS/Amazon Linux)
+  yum:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg2
+      - sudo
+      - vim
+      - wget
+      - yum-utils
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Ensure essential packages are installed (OpenSUSE)
+  zypper:
+    name:
+      - ca-certificates
+      - curl
+      - sudo
+      - vim
+      - wget
+    state: present
+  when: ansible_os_family == "Suse"
+
+- name: Create local facts directory
+  file:
+    path: /etc/ansible/facts.d
+    state: directory
+    mode: '0755'
+
+- name: Record hardening fact
+  copy:
+    content: |
+      {
+        "hardening_applied": true,
+        "hardening_date": "{{ ansible_date_time.iso8601 }}",
+        "hardening_version": "1.0"
+      }
+    dest: /etc/ansible/facts.d/hardening.fact
+    mode: '0644'

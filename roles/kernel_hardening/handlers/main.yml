@@ -1,0 +1,19 @@
+---
+- name: update grub
+  command: "{{ grub_update_command }}"
+  when: grub_update_command is defined
+
+- name: update grub (Debian/Ubuntu)
+  command: update-grub
+  when: ansible_os_family == "Debian"
+  listen: update grub
+
+- name: update grub (RedHat/CentOS)
+  command: grub2-mkconfig -o /boot/grub2/grub.cfg
+  when: ansible_os_family == "RedHat"
+  listen: update grub
+
+- name: update grub (OpenSUSE)
+  command: grub2-mkconfig -o /boot/grub2/grub.cfg
+  when: ansible_os_family == "Suse"
+  listen: update grub

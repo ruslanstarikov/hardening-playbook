@@ -1,0 +1,174 @@
+---
+- name: Install auditd (Debian/Ubuntu)
+  apt:
+    name:
+      - auditd
+      - audispd-plugins
+    state: present
+  when: 
+    - ansible_os_family == "Debian"
+    - hardening_enable_auditd | bool
+
+- name: Install auditd (RedHat/CentOS/Amazon Linux)
+  yum:
+    name:
+      - audit
+      - audit-libs
+    state: present
+  when: 
+    - ansible_os_family == "RedHat"
+    - hardening_enable_auditd | bool
+
+- name: Install auditd (OpenSUSE)
+  zypper:
+    name: audit
+    state: present
+  when: 
+    - ansible_os_family == "Suse"
+    - hardening_enable_auditd | bool
+
+- name: Configure auditd
+  lineinfile:
+    path: /etc/audit/auditd.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^max_log_file\s*=', line: 'max_log_file = 32' }
+    - { regexp: '^max_log_file_action\s*=', line: 'max_log_file_action = keep_logs' }
+    - { regexp: '^space_left_action\s*=', line: 'space_left_action = email' }
+    - { regexp: '^action_mail_acct\s*=', line: 'action_mail_acct = root' }
+    - { regexp: '^admin_space_left_action\s*=', line: 'admin_space_left_action = halt' }
+  when: hardening_enable_auditd | bool
+  notify: restart auditd
+
+- name: Create audit rules file
+  template:
+    src: audit.rules.j2
+    dest: /etc/audit/rules.d/hardening.rules
+    owner: root
+    group: root
+    mode: '0640'
+  when: hardening_enable_auditd | bool
+  notify: restart auditd
+
+- name: Enable auditd service
+  service:
+    name: auditd
+    enabled: yes
+    state: started
+  when: hardening_enable_auditd | bool
+
+- name: Configure rsyslog
+  lineinfile:
+    path: /etc/rsyslog.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^\$FileCreateMode', line: '$FileCreateMode 0640' }
+    - { regexp: '^\*.emerg', line: '*.emerg :omusrmsg:*' }
+  notify: restart rsyslog
+
+- name: Ensure rsyslog is enabled and running
+  service:
+    name: rsyslog
+    enabled: yes
+    state: started
+
+- name: Configure logrotate for system logs
+  copy:
+    content: |
+      /var/log/messages
+      /var/log/secure
+      /var/log/maillog
+      /var/log/cron
+      /var/log/boot.log
+      {
+          rotate 4
+          weekly
+          missingok
+          notifempty
+          compress
+          sharedscripts
+          postrotate
+              /usr/bin/systemctl reload rsyslog > /dev/null 2>&1 || true
+          endscript
+      }
+    dest: /etc/logrotate.d/syslog
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Set proper permissions on log files
+  file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: '0640'
+  loop:
+    - /var/log/messages
+    - /var/log/secure
+    - /var/log/maillog
+    - /var/log/cron
+  failed_when: false
+
+- name: Set proper permissions on log directories
+  file:
+    path: /var/log
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure journald
+  lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^#?Storage=', line: 'Storage=persistent' }
+    - { regexp: '^#?Compress=', line: 'Compress=yes' }
+    - { regexp: '^#?ForwardToSyslog=', line: 'ForwardToSyslog=yes' }
+  notify: restart journald
+
+- name: Install aide (intrusion detection) (Debian/Ubuntu)
+  apt:
+    name: aide
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install aide (intrusion detection) (RedHat/CentOS/Amazon Linux)
+  yum:
+    name: aide
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Initialize AIDE database
+  shell: |
+    if [ ! -f /var/lib/aide/aide.db ]; then
+      aideinit
+    fi
+  when: ansible_os_family == "Debian"
+  failed_when: false
+  changed_when: false
+
+- name: Initialize AIDE database (RedHat)
+  shell: |
+    if [ ! -f /var/lib/aide/aide.db.gz ]; then
+      aide --init
+      mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+    fi
+  when: ansible_os_family == "RedHat"
+  failed_when: false
+  changed_when: false
+
+- name: Configure AIDE cron job
+  cron:
+    name: "Run AIDE check"
+    minute: "0"
+    hour: "5"
+    job: "/usr/bin/aide --check | mail -s 'AIDE Report' root"
+    user: root
+  failed_when: false

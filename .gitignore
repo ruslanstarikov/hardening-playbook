@@ -1,0 +1,16 @@
+*.retry
+*.pyc
+__pycache__/
+.pytest_cache/
+.molecule/
+*.log
+.cache/
+.tox/
+venv/
+.venv/
+*.swp
+*.swo
+*~
+.DS_Store
+/tmp/
+ansible_facts/

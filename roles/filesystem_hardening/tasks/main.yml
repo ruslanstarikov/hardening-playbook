@@ -1,0 +1,128 @@
+---
+- name: Get current mount options for /tmp
+  shell: mount | grep ' /tmp ' | awk '{print $6}' | tr -d '()'
+  register: tmp_mount_options
+  changed_when: false
+  failed_when: false
+
+- name: Check if /tmp is a separate partition
+  shell: mount | grep -q ' /tmp '
+  register: tmp_partition_check
+  changed_when: false
+  failed_when: false
+
+- name: Configure /tmp mount options in fstab
+  mount:
+    path: /tmp
+    src: tmpfs
+    fstype: tmpfs
+    opts: "{{ hardening_tmp_options }},size=2G"
+    state: present
+  when: tmp_partition_check.rc != 0
+
+- name: Get current mount options for /var/tmp
+  shell: mount | grep ' /var/tmp ' | awk '{print $6}' | tr -d '()'
+  register: var_tmp_mount_options
+  changed_when: false
+  failed_when: false
+
+- name: Configure /var/tmp mount options in fstab
+  mount:
+    path: /var/tmp
+    src: tmpfs
+    fstype: tmpfs
+    opts: "{{ hardening_var_tmp_options }},size=2G"
+    state: present
+  when: var_tmp_mount_options.rc != 0
+
+- name: Configure /dev/shm mount options in fstab
+  mount:
+    path: /dev/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: "{{ hardening_dev_shm_options }}"
+    state: present
+
+- name: Set proper permissions on sensitive files
+  file:
+    path: "{{ item.path }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: '/etc/passwd', owner: 'root', group: 'root', mode: '0644' }
+    - { path: '/etc/shadow', owner: 'root', group: 'root', mode: '0000' }
+    - { path: '/etc/group', owner: 'root', group: 'root', mode: '0644' }
+    - { path: '/etc/gshadow', owner: 'root', group: 'root', mode: '0000' }
+    - { path: '/etc/passwd-', owner: 'root', group: 'root', mode: '0600' }
+    - { path: '/etc/shadow-', owner: 'root', group: 'root', mode: '0000' }
+    - { path: '/etc/group-', owner: 'root', group: 'root', mode: '0600' }
+    - { path: '/etc/gshadow-', owner: 'root', group: 'root', mode: '0000' }
+    - { path: '/boot/grub/grub.cfg', owner: 'root', group: 'root', mode: '0600' }
+  when: item.path is exists or ansible_os_family != "Suse" or 'gshadow' not in item.path
+  failed_when: false
+
+- name: Find world-writable files
+  shell: |
+    find / -xdev -type f -perm -0002 -not -path '/proc/*' -not -path '/sys/*' 2>/dev/null | head -20
+  register: world_writable_files
+  changed_when: false
+  failed_when: false
+
+- name: Report world-writable files
+  debug:
+    msg: "World-writable files found (first 20): {{ world_writable_files.stdout_lines }}"
+  when: world_writable_files.stdout_lines | length > 0
+
+- name: Find files with no owner
+  shell: |
+    find / -xdev -nouser -o -nogroup -not -path '/proc/*' -not -path '/sys/*' 2>/dev/null | head -20
+  register: no_owner_files
+  changed_when: false
+  failed_when: false
+
+- name: Report files with no owner
+  debug:
+    msg: "Files with no owner found (first 20): {{ no_owner_files.stdout_lines }}"
+  when: no_owner_files.stdout_lines | length > 0
+
+- name: Disable USB storage
+  lineinfile:
+    path: /etc/modprobe.d/usb-storage.conf
+    line: 'install usb-storage /bin/true'
+    create: yes
+    mode: '0644'
+
+- name: Disable uncommon filesystems
+  lineinfile:
+    path: /etc/modprobe.d/uncommon-filesystems.conf
+    line: "install {{ item }} /bin/true"
+    create: yes
+    mode: '0644'
+  loop:
+    - cramfs
+    - freevxfs
+    - jffs2
+    - hfs
+    - hfsplus
+    - udf
+
+- name: Set sticky bit on world-writable directories
+  shell: |
+    find / -xdev -type d -perm -0002 -not -perm -1000 -not -path '/proc/*' -not -path '/sys/*' 2>/dev/null | xargs -r chmod a+t
+  changed_when: false
+  failed_when: false
+
+- name: Ensure core dumps are restricted
+  lineinfile:
+    path: /etc/security/limits.conf
+    line: '* hard core 0'
+    state: present
+
+- name: Disable core dumps via sysctl
+  sysctl:
+    name: fs.suid_dumpable
+    value: '0'
+    state: present
+    sysctl_file: /etc/sysctl.d/99-hardening.conf
+    reload: yes
